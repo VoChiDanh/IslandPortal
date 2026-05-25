@@ -172,9 +172,11 @@ public final class IslandPortalCommand {
             sender.sendMessage(config.message("unknown-type"));
             return 0;
         }
-        boolean created = portalService.createDefaultPortal("manual-island:" + player.getWorld().getName() + ":" + player.getLocation().getBlockX() + ":" + player.getLocation().getBlockY() + ":" + player.getLocation().getBlockZ(), type, player.getLocation());
-        sender.sendMessage(created ? config.message("portal-island-created").replace("%type%", type.id()) : config.message("portal-island-no-space"));
-        return created ? Command.SINGLE_SUCCESS : 0;
+        Location origin = player.getLocation();
+        String id = "manual-island:" + origin.getWorld().getName() + ":" + origin.getBlockX() + ":" + origin.getBlockY() + ":" + origin.getBlockZ();
+        portalService.createDefaultPortal(id, type, origin, player, created -> player.sendMessage(created ? config.message("portal-island-created").replace("%type%", type.id()) : config.message("portal-island-no-space")));
+        sender.sendMessage(config.message("portal-island-queued").replace("%type%", type.id()));
+        return Command.SINGLE_SUCCESS;
     }
 
     private int remove(CommandContext<CommandSourceStack> context) {

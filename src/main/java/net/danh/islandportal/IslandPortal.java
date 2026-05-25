@@ -10,6 +10,8 @@ import net.danh.islandportal.portal.service.PortalService;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.io.File;
+
 public final class IslandPortal extends JavaPlugin {
 
     private PortalConfig portalConfig;
@@ -22,6 +24,7 @@ public final class IslandPortal extends JavaPlugin {
         saveBundledResource("messages.yml");
         saveBundledResource("portals.yml");
         saveBundledResource("menus.yml");
+        saveBundledResource("schematics/spawn_portal_island.schem");
 
         portalConfig = new PortalConfig(this);
         platformScheduler = new PlatformScheduler(this);
@@ -66,7 +69,7 @@ public final class IslandPortal extends JavaPlugin {
     }
 
     private void saveBundledResource(String name) {
-        if (!new java.io.File(getDataFolder(), name).exists()) {
+        if (!new File(getDataFolder(), name).exists()) {
             saveResource(name, false);
         }
     }

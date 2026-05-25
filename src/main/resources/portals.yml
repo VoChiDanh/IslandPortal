@@ -49,18 +49,32 @@ portal-types:
     # which helps avoid overlapping schematics that already contain side islands.
     portal-island:
       enabled: true
+      # PLATFORM builds the simple generated island below.
+      # SCHEMATIC pastes a WorldEdit/FAWE schematic from the plugin data folder,
+      # then creates and tracks the managed portal at portal-offset.
+      mode: SCHEMATIC
+      schematic: "schematics/spawn_portal_island.schem"
+      schematic-ignore-air: true
+      # PLATFORM mode options. These are also used as fallback when SCHEMATIC
+      # cannot run because WorldEdit/FAWE is missing or the file is invalid.
       platform-radius: 4
       dirt-depth: 3
       top-material: GRASS_BLOCK
       fill-material: DIRT
+      # Offset from the generated platform center or schematic paste origin to
+      # the lower-left base block of the managed portal frame.
       portal-offset:
-        x: -1
-        y: 1
-        z: 0
+        x: 3
+        y: 4
+        z: 4
+      # Adds a random radial offset to island-offset before scanning candidates.
       random-distance:
         min: 0
         max: 12
       random-facing: true
+      # The scan walks outward from the origin by search-step blocks until
+      # search-radius is reached. Folia-safe candidates that cross chunk
+      # boundaries are skipped automatically.
       search-radius: 48
       search-step: 6
       clearance: 3

@@ -12,11 +12,9 @@ import org.bukkit.plugin.java.JavaPlugin;
 import java.io.File;
 import java.io.IOException;
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
@@ -60,7 +58,7 @@ public final class PortalRepository {
             YamlConfiguration data = groupedData.computeIfAbsent(fileName, ignored -> new YamlConfiguration());
             savePortalTo(data, portal);
         }
-        Set<String> savedFiles = new HashSet<>();
+        Set<String> savedFiles = ConcurrentHashMap.newKeySet();
         for (Map.Entry<String, YamlConfiguration> entry : groupedData.entrySet()) {
             try {
                 File target = new File(playerDataFolder, entry.getKey());
@@ -281,16 +279,8 @@ public final class PortalRepository {
         if (portal.owner() == null || portal.owner().isBlank()) {
             return "server.yml";
         }
-        String name = null;
-        try {
-            name = plugin.getServer().getOfflinePlayer(UUID.fromString(portal.owner())).getName();
-        } catch (IllegalArgumentException ignored) {
-        }
-        if (name == null || name.isBlank()) {
-            String compactUuid = portal.owner().replace("-", "");
-            name = "unknown_" + compactUuid.substring(0, Math.min(12, compactUuid.length()));
-        }
-        return sanitizeFileName(name) + ".yml";
+        // The repository may autosave from an async worker. Avoid OfflinePlayer lookups here because Bukkit identity APIs are not async-safe.
+        return sanitizeFileName(portal.owner()) + ".yml";
     }
 
     private String sanitizeFileName(String value) {

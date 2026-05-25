@@ -10,14 +10,14 @@ import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.Orientable;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public final class PortalBlockBuilder {
 
     public PortalBlocks build(PortalType type, Location base, BlockFace facing) {
-        List<String> blocks = new ArrayList<>();
-        List<String> triggerBlocks = new ArrayList<>();
+        List<String> blocks = new CopyOnWriteArrayList<>();
+        List<String> triggerBlocks = new CopyOnWriteArrayList<>();
         PortalShape shape = type.shape();
         BlockData portalData = shape.portalMaterial().createBlockData();
         BlockFace widthFace = widthFace(horizontal(facing));

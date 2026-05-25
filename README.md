@@ -9,12 +9,14 @@ IslandPortal is a Paper/Folia island portal plugin for Skyblock servers. It crea
 - Configurable portal types, menu items, access policies, command metadata, cooldowns, autosave interval, and integration toggles.
 - In-memory portal state with periodic and shutdown persistence to `playerdata`.
 - Optional integrations with BentoBox, SuperiorSkyblock2, and Skyllia.
+- Optional WorldEdit/FastAsyncWorldEdit schematic portal islands with generated-platform fallback.
+- GitHub Actions build validation and wiki markdown validation.
 
 ## Requirements
 
 - Java 25
 - Paper or Folia compatible with the configured Paper API version
-- Optional: BentoBox, SuperiorSkyblock2, or Skyllia
+- Optional: BentoBox, SuperiorSkyblock2, Skyllia, WorldEdit, or FastAsyncWorldEdit
 
 ## Build
 
@@ -34,6 +36,19 @@ The plugin writes these files on first start:
 - `messages.yml`
 
 Runtime tuning such as autosave interval, vanilla portal cooldown, portal lookup scan radius, command aliases, and integration toggles is in `config.yml`.
+
+Default portal islands can be generated from simple materials or pasted from a WorldEdit/FAWE schematic. The plugin bundles `schematics/spawn_portal_island.schem` as the default schematic. If WorldEdit/FAWE is missing or the schematic cannot be loaded, the plugin falls back to the generated platform mode.
+
+## Documentation
+
+Detailed documentation is maintained in the `wiki` folder and can be published to a GitHub wiki:
+
+- Folia architecture
+- Configuration
+- Schematic portal islands
+- Commands and permissions
+- Storage and cleanup
+- Troubleshooting
 
 ## License
 

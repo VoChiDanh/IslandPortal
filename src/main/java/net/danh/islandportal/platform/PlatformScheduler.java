@@ -48,6 +48,14 @@ public final class PlatformScheduler {
         return task::cancel;
     }
 
+    public void runAsync(Runnable runnable) {
+        if (folia) {
+            Bukkit.getAsyncScheduler().runNow(plugin, ignored -> runnable.run());
+            return;
+        }
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, runnable);
+    }
+
     public void runAt(Location location, Runnable runnable) {
         World world = location.getWorld();
         if (world == null) {
@@ -58,6 +66,17 @@ public final class PlatformScheduler {
             return;
         }
         Bukkit.getScheduler().runTask(plugin, runnable);
+    }
+
+    public void runAtLoaded(Location location, Runnable runnable) {
+        World world = location.getWorld();
+        if (world == null) {
+            return;
+        }
+        int chunkX = location.getBlockX() >> 4;
+        int chunkZ = location.getBlockZ() >> 4;
+        // Async chunk loading avoids blocking the main thread on Paper and avoids illegal synchronous chunk loads on Folia.
+        world.getChunkAtAsync(chunkX, chunkZ).thenAccept(ignored -> runAt(location, runnable));
     }
 
     public void runFor(Entity entity, Runnable runnable) {

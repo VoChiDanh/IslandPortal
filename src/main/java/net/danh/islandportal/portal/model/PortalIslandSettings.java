@@ -5,6 +5,7 @@ import org.bukkit.util.Vector;
 
 public record PortalIslandSettings(
         boolean enabled,
+        PortalIslandMode mode,
         int platformRadius,
         int dirtDepth,
         Material topMaterial,
@@ -15,6 +16,8 @@ public record PortalIslandSettings(
         boolean randomFacing,
         int searchRadius,
         int searchStep,
-        int clearance
+        int clearance,
+        String schematic,
+        boolean schematicIgnoreAir
 ) {
 }

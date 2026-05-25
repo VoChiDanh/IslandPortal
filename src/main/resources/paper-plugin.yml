@@ -16,6 +16,12 @@ dependencies:
     Skyllia:
       load: AFTER
       required: false
+    WorldEdit:
+      load: AFTER
+      required: false
+    FastAsyncWorldEdit:
+      load: AFTER
+      required: false
 permissions:
   islandportal.admin:
     default: op

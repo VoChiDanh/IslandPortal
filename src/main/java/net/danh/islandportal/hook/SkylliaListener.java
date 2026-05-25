@@ -43,14 +43,14 @@ public final class SkylliaListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onSkyblockCreate(SkyblockCreateEvent event) {
         Island island = event.getIsland();
-        Player owner = Bukkit.getPlayer(event.getOwnerId());
-        if (owner != null) {
-            scheduler.runFor(owner, () -> handleIslandCreated(island, owner.getLocation(), event.getOwnerId()));
-            return;
-        }
         Location location = islandLocation(island);
+        Player owner = Bukkit.getPlayer(event.getOwnerId());
         if (location != null) {
             scheduler.runAt(location, () -> handleIslandCreated(island, location, event.getOwnerId()));
+            return;
+        }
+        if (owner != null) {
+            scheduler.runFor(owner, () -> handleIslandCreated(island, owner.getWorld().getSpawnLocation(), event.getOwnerId()));
         }
     }
 

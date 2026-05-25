@@ -1,0 +1,49 @@
+name: Bug report
+description: Report a reproducible IslandPortal problem.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Explain what broke and what you expected to happen.
+    validations:
+      required: true
+  - type: input
+    id: server
+    attributes:
+      label: Server software and version
+      placeholder: "Paper 1.21.x / Folia build ..."
+    validations:
+      required: true
+  - type: input
+    id: plugin
+    attributes:
+      label: IslandPortal version
+      placeholder: "1.0"
+    validations:
+      required: true
+  - type: textarea
+    id: integrations
+    attributes:
+      label: Installed integrations
+      description: List BentoBox, SuperiorSkyblock2, Skyllia, WorldEdit, FAWE, and versions.
+    validations:
+      required: false
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Create an island\n2. Enter the portal\n3. ..."
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Paste relevant console output or stack traces.
+      render: text
+    validations:
+      required: false

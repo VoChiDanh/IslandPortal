@@ -7,6 +7,7 @@ plugins {
 
 repositories {
     mavenCentral()
+    maven("https://maven.enginehub.org/repo/")
     maven("https://repo.codemc.org/repository/maven-public/")
     maven("https://repo.bg-software.com/repository/api/")
     maven("https://repo.euphyllia.moe/repository/maven-public/")
@@ -17,6 +18,12 @@ dependencies {
     compileOnly("world.bentobox:bentobox:2.7.0-SNAPSHOT")
     compileOnly("com.bgsoftware:SuperiorSkyblockAPI:2026.1")
     compileOnly("fr.euphyllia.skyllia:api:3.+")
+    compileOnly("com.sk89q.worldedit:worldedit-core:7.3.16") {
+        isTransitive = false
+    }
+    compileOnly("com.sk89q.worldedit:worldedit-bukkit:7.3.16") {
+        isTransitive = false
+    }
 }
 
 java {

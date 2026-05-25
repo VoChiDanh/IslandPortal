@@ -4,6 +4,7 @@ import net.danh.islandportal.portal.model.AccessPolicy;
 import net.danh.islandportal.portal.model.MenuConfig;
 import net.danh.islandportal.portal.model.MenuItemConfig;
 import net.danh.islandportal.portal.model.PortalAction;
+import net.danh.islandportal.portal.model.PortalIslandMode;
 import net.danh.islandportal.portal.model.PortalIslandSettings;
 import net.danh.islandportal.portal.model.PortalItemSettings;
 import net.danh.islandportal.portal.model.PortalPermissions;
@@ -23,15 +24,15 @@ import org.bukkit.util.Vector;
 import java.io.File;
 import java.io.IOException;
 import java.util.Collection;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class PortalConfig {
 
     private final JavaPlugin plugin;
-    private final Map<String, PortalType> portalTypes = new LinkedHashMap<>();
+    private final Map<String, PortalType> portalTypes = new ConcurrentHashMap<>();
     private File portalsFile;
     private FileConfiguration portalsConfig;
     private FileConfiguration messagesConfig;
@@ -41,6 +42,8 @@ public final class PortalConfig {
     private boolean debug;
     private int islandCleanupRadius;
     private int creationDelayTicks;
+    private int creationRetryAttempts;
+    private int creationRetryDelayTicks;
     private int autosaveIntervalMinutes;
     private int vanillaPortalCooldownTicks;
     private int useCooldownMillis;
@@ -71,6 +74,8 @@ public final class PortalConfig {
         debug = config.getBoolean("debug", false);
         islandCleanupRadius = Math.max(1, config.getInt("island-cleanup-radius", 100));
         creationDelayTicks = Math.max(0, config.getInt("creation-delay-ticks", 60));
+        creationRetryAttempts = Math.max(1, config.getInt("creation-retry-attempts", 5));
+        creationRetryDelayTicks = Math.max(1, config.getInt("creation-retry-delay-ticks", 40));
         autosaveIntervalMinutes = Math.max(1, config.getInt("runtime.autosave-interval-minutes", 10));
         vanillaPortalCooldownTicks = Math.max(1, config.getInt("runtime.vanilla-portal-cooldown-ticks", 200));
         useCooldownMillis = Math.max(1, config.getInt("runtime.use-cooldown-millis", 1000));
@@ -132,6 +137,14 @@ public final class PortalConfig {
 
     public int creationDelayTicks() {
         return creationDelayTicks;
+    }
+
+    public int creationRetryAttempts() {
+        return creationRetryAttempts;
+    }
+
+    public int creationRetryDelayTicks() {
+        return creationRetryDelayTicks;
     }
 
     public boolean debug() {
@@ -350,10 +363,11 @@ public final class PortalConfig {
 
     private PortalIslandSettings portalIsland(ConfigurationSection section) {
         if (section == null) {
-            return new PortalIslandSettings(false, 4, 3, Material.GRASS_BLOCK, Material.DIRT, new Vector(0, 1, 0), 0, 0, false, 48, 6, 3);
+            return new PortalIslandSettings(false, PortalIslandMode.PLATFORM, 4, 3, Material.GRASS_BLOCK, Material.DIRT, new Vector(0, 1, 0), 0, 0, false, 48, 6, 3, "", true);
         }
         return new PortalIslandSettings(
                 section.getBoolean("enabled", false),
+                portalIslandMode(section.getString("mode", "PLATFORM")),
                 Math.max(1, section.getInt("platform-radius", 4)),
                 Math.max(1, section.getInt("dirt-depth", 3)),
                 material(section.getString("top-material"), Material.GRASS_BLOCK),
@@ -368,8 +382,18 @@ public final class PortalConfig {
                 section.getBoolean("random-facing", false),
                 Math.max(0, section.getInt("search-radius", 48)),
                 Math.max(1, section.getInt("search-step", 6)),
-                Math.max(0, section.getInt("clearance", 3))
+                Math.max(0, section.getInt("clearance", 3)),
+                section.getString("schematic", ""),
+                section.getBoolean("schematic-ignore-air", true)
         );
+    }
+
+    private PortalIslandMode portalIslandMode(String value) {
+        try {
+            return PortalIslandMode.valueOf(value.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException exception) {
+            return PortalIslandMode.PLATFORM;
+        }
     }
 
     private BlockFace blockFace(String value) {

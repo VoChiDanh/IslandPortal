@@ -18,6 +18,7 @@ commands:
 
 runtime:
   # Autosaves dirty in-memory portal data to playerdata every N minutes.
+  # File I/O is dispatched asynchronously by the platform scheduler.
   autosave-interval-minutes: 10
   # Prevents vanilla Nether travel while a player is inside a managed portal.
   vanilla-portal-cooldown-ticks: 200
@@ -32,6 +33,10 @@ runtime:
 # How long to wait after a skyblock island-create event before placing default portals.
 # Use this when the island plugin still needs a few ticks to paste schematics or finish hooks.
 creation-delay-ticks: 60
+# If the first placement scan runs while the island plugin is still pasting blocks,
+# retry a few times before giving up.
+creation-retry-attempts: 5
+creation-retry-delay-ticks: 40
 
 # Radius used during island deletion cleanup when an exact island id is not available.
 # Any managed portal near the deleted island center inside this radius can be cleaned up.

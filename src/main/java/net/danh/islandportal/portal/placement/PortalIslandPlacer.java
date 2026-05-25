@@ -1,6 +1,7 @@
 package net.danh.islandportal.portal.placement;
 
 import net.danh.islandportal.portal.model.DefaultPortalPlacement;
+import net.danh.islandportal.portal.model.PortalIslandMode;
 import net.danh.islandportal.portal.model.PortalIslandSettings;
 import net.danh.islandportal.portal.model.PortalShape;
 import net.danh.islandportal.portal.model.PortalType;
@@ -8,20 +9,27 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
+import org.bukkit.Bukkit;
+import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.Vector;
 
-import java.util.ArrayList;
+import java.io.File;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
 
 public final class PortalIslandPlacer {
 
+    private final JavaPlugin plugin;
     private final PortalBlockBuilder blockBuilder;
+    private final WorldEditSchematicPaster schematicPaster;
     private final Consumer<String> debug;
 
-    public PortalIslandPlacer(PortalBlockBuilder blockBuilder, Consumer<String> debug) {
+    public PortalIslandPlacer(JavaPlugin plugin, PortalBlockBuilder blockBuilder, Consumer<String> debug) {
+        this.plugin = plugin;
         this.blockBuilder = blockBuilder;
+        this.schematicPaster = worldEditAvailable() ? new WorldEditSchematicPaster(debug) : null;
         this.debug = debug;
     }
 
@@ -31,10 +39,22 @@ public final class PortalIslandPlacer {
         if (!settings.enabled()) {
             return new DefaultPortalPlacement(islandLocation.clone().add(randomizedOffset(type)).getBlock().getLocation(), facing, List.of());
         }
+        if (settings.mode() == PortalIslandMode.SCHEMATIC) {
+            DefaultPortalPlacement schematicPlacement = placeSchematic(type, islandLocation, facing, settings);
+            if (schematicPlacement != null) {
+                return schematicPlacement;
+            }
+            debug.accept("Falling back to generated portal-island platform for " + type.id() + ".");
+        }
 
         Location origin = islandLocation.clone().add(randomizedOffset(type)).getBlock().getLocation();
         for (Location platformCenter : platformCandidates(origin, settings.searchRadius(), settings.searchStep())) {
-            if (!isClearForPortalIsland(platformCenter, type)) {
+            Bounds bounds = platformBounds(platformCenter, type, facing);
+            if (!bounds.insideSingleChunk()) {
+                debug.accept("Skipped portal-island candidate crossing chunk boundaries at " + locationString(platformCenter) + ".");
+                continue;
+            }
+            if (!isClear(platformCenter, bounds)) {
                 continue;
             }
             List<String> supportBlocks = createPortalIsland(platformCenter, settings);
@@ -45,8 +65,53 @@ public final class PortalIslandPlacer {
         return null;
     }
 
+    private DefaultPortalPlacement placeSchematic(PortalType type, Location islandLocation, BlockFace facing, PortalIslandSettings settings) {
+        if (schematicPaster == null) {
+            debug.accept("WorldEdit/FAWE is not available for schematic portal-island " + type.id() + ".");
+            return null;
+        }
+        if (settings.schematic().isBlank()) {
+            debug.accept("No schematic file configured for schematic portal-island " + type.id() + ".");
+            return null;
+        }
+        File schematicFile = new File(plugin.getDataFolder(), settings.schematic());
+        if (!schematicFile.isFile()) {
+            debug.accept("Configured portal-island schematic does not exist: " + schematicFile.getPath());
+            return null;
+        }
+        WorldEditSchematicPaster.LoadedSchematic schematic;
+        try {
+            schematic = schematicPaster.load(schematicFile);
+        } catch (Exception exception) {
+            debug.accept("Could not load portal-island schematic " + schematicFile.getName() + ": " + exception.getMessage());
+            return null;
+        }
+
+        Location origin = islandLocation.clone().add(randomizedOffset(type)).getBlock().getLocation();
+        for (Location pasteOrigin : platformCandidates(origin, settings.searchRadius(), settings.searchStep())) {
+            Bounds bounds = schematicBounds(pasteOrigin, type, facing, schematic);
+            if (!bounds.insideSingleChunk()) {
+                debug.accept("Skipped schematic portal-island candidate crossing chunk boundaries at " + locationString(pasteOrigin) + ".");
+                continue;
+            }
+            if (!isClear(pasteOrigin, bounds)) {
+                continue;
+            }
+            try {
+                List<String> supportBlocks = schematic.paste(pasteOrigin, settings.schematicIgnoreAir());
+                Location portalBase = pasteOrigin.clone().add(settings.portalOffset()).getBlock().getLocation();
+                debug.accept("Schematic portal-island for " + type.id() + " pasted at " + locationString(pasteOrigin) + ".");
+                return new DefaultPortalPlacement(portalBase, facing, supportBlocks);
+            } catch (Exception exception) {
+                debug.accept("Could not paste portal-island schematic " + schematicFile.getName() + ": " + exception.getMessage());
+                return null;
+            }
+        }
+        return null;
+    }
+
     private List<Location> platformCandidates(Location origin, int searchRadius, int searchStep) {
-        List<Location> candidates = new ArrayList<>();
+        List<Location> candidates = new CopyOnWriteArrayList<>();
         candidates.add(origin.clone());
         for (int radius = searchStep; radius <= searchRadius; radius += searchStep) {
             for (int x = -radius; x <= radius; x += searchStep) {
@@ -61,11 +126,11 @@ public final class PortalIslandPlacer {
         return candidates;
     }
 
-    private boolean isClearForPortalIsland(Location platformCenter, PortalType type) {
+    private Bounds platformBounds(Location platformCenter, PortalType type, BlockFace facing) {
         PortalIslandSettings island = type.portalIsland();
         PortalShape shape = type.shape();
         Location portalBase = platformCenter.clone().add(island.portalOffset()).getBlock().getLocation();
-        BlockFace widthFace = blockBuilder.widthFace(type.islandFacing());
+        BlockFace widthFace = blockBuilder.widthFace(facing);
         int portalEndX = portalBase.getBlockX() + widthFace.getModX() * (shape.width() + 1);
         int portalEndZ = portalBase.getBlockZ() + widthFace.getModZ() * (shape.width() + 1);
         int minX = Math.min(platformCenter.getBlockX() - island.platformRadius(), Math.min(portalBase.getBlockX(), portalEndX));
@@ -75,10 +140,31 @@ public final class PortalIslandPlacer {
         int minY = platformCenter.getBlockY() - island.dirtDepth();
         int maxY = portalBase.getBlockY() + shape.height() + 2;
 
-        for (int x = minX - island.clearance(); x <= maxX + island.clearance(); x++) {
-            for (int y = minY - island.clearance(); y <= maxY + island.clearance(); y++) {
-                for (int z = minZ - island.clearance(); z <= maxZ + island.clearance(); z++) {
-                    if (!platformCenter.getWorld().getBlockAt(x, y, z).getType().isAir()) {
+        return new Bounds(minX, maxX, minY, maxY, minZ, maxZ, island.clearance());
+    }
+
+    private Bounds schematicBounds(Location pasteOrigin, PortalType type, BlockFace facing, WorldEditSchematicPaster.LoadedSchematic schematic) {
+        PortalIslandSettings island = type.portalIsland();
+        PortalShape shape = type.shape();
+        Location portalBase = pasteOrigin.clone().add(island.portalOffset()).getBlock().getLocation();
+        BlockFace widthFace = blockBuilder.widthFace(facing);
+        int portalEndX = portalBase.getBlockX() + widthFace.getModX() * (shape.width() + 1);
+        int portalEndZ = portalBase.getBlockZ() + widthFace.getModZ() * (shape.width() + 1);
+        int minX = Math.min(pasteOrigin.getBlockX() + schematic.minX(), Math.min(portalBase.getBlockX(), portalEndX));
+        int maxX = Math.max(pasteOrigin.getBlockX() + schematic.maxX(), Math.max(portalBase.getBlockX(), portalEndX));
+        int minY = Math.min(pasteOrigin.getBlockY() + schematic.minY(), portalBase.getBlockY());
+        int maxY = Math.max(pasteOrigin.getBlockY() + schematic.maxY(), portalBase.getBlockY() + shape.height() + 1);
+        int minZ = Math.min(pasteOrigin.getBlockZ() + schematic.minZ(), Math.min(portalBase.getBlockZ(), portalEndZ));
+        int maxZ = Math.max(pasteOrigin.getBlockZ() + schematic.maxZ(), Math.max(portalBase.getBlockZ(), portalEndZ));
+
+        return new Bounds(minX, maxX, minY, maxY, minZ, maxZ, island.clearance());
+    }
+
+    private boolean isClear(Location origin, Bounds bounds) {
+        for (int x = bounds.minXWithClearance(); x <= bounds.maxXWithClearance(); x++) {
+            for (int y = bounds.minYWithClearance(); y <= bounds.maxYWithClearance(); y++) {
+                for (int z = bounds.minZWithClearance(); z <= bounds.maxZWithClearance(); z++) {
+                    if (!origin.getWorld().getBlockAt(x, y, z).getType().isAir()) {
                         return false;
                     }
                 }
@@ -88,7 +174,7 @@ public final class PortalIslandPlacer {
     }
 
     private List<String> createPortalIsland(Location center, PortalIslandSettings settings) {
-        List<String> blocks = new ArrayList<>();
+        List<String> blocks = new CopyOnWriteArrayList<>();
         int radius = settings.platformRadius();
         int radiusSquared = radius * radius;
         for (int x = -radius; x <= radius; x++) {
@@ -126,11 +212,54 @@ public final class PortalIslandPlacer {
         return faces[ThreadLocalRandom.current().nextInt(faces.length)];
     }
 
+    private boolean worldEditAvailable() {
+        try {
+            Class.forName("com.sk89q.worldedit.WorldEdit");
+            Class.forName("com.sk89q.worldedit.bukkit.BukkitAdapter");
+        } catch (ClassNotFoundException ignored) {
+            return false;
+        }
+        return Bukkit.getPluginManager().isPluginEnabled("WorldEdit") || Bukkit.getPluginManager().isPluginEnabled("FastAsyncWorldEdit");
+    }
+
     private String key(Location location) {
         return location.getWorld().getName() + ":" + location.getBlockX() + ":" + location.getBlockY() + ":" + location.getBlockZ();
     }
 
     private String locationString(Location location) {
         return location.getWorld().getName() + " " + location.getBlockX() + " " + location.getBlockY() + " " + location.getBlockZ();
+    }
+
+    private record Bounds(int minX, int maxX, int minY, int maxY, int minZ, int maxZ, int clearance) {
+
+        private boolean insideSingleChunk() {
+            // Folia owns block state by region/chunk. Keeping placement within one chunk guarantees the current RegionScheduler task owns every block it reads or writes.
+            return (minXWithClearance() >> 4) == (maxXWithClearance() >> 4)
+                    && (minZWithClearance() >> 4) == (maxZWithClearance() >> 4);
+        }
+
+        private int minXWithClearance() {
+            return minX - clearance;
+        }
+
+        private int maxXWithClearance() {
+            return maxX + clearance;
+        }
+
+        private int minYWithClearance() {
+            return minY - clearance;
+        }
+
+        private int maxYWithClearance() {
+            return maxY + clearance;
+        }
+
+        private int minZWithClearance() {
+            return minZ - clearance;
+        }
+
+        private int maxZWithClearance() {
+            return maxZ + clearance;
+        }
     }
 }

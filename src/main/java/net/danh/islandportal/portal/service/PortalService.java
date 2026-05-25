@@ -21,6 +21,7 @@ import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Player;
@@ -46,6 +47,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 public final class PortalService implements Listener {
 
@@ -62,7 +65,7 @@ public final class PortalService implements Listener {
     private final Map<UUID, Long> useCooldowns = new ConcurrentHashMap<>();
     private final Set<String> pendingCreations = ConcurrentHashMap.newKeySet();
     private PlatformTask autoSaveTask;
-    private boolean saveDirty;
+    private final AtomicBoolean saveDirty = new AtomicBoolean(false);
 
     public PortalService(JavaPlugin plugin, PortalConfig config, PlatformScheduler scheduler) {
         this.plugin = plugin;
@@ -70,7 +73,7 @@ public final class PortalService implements Listener {
         this.scheduler = scheduler;
         this.repository = new PortalRepository(plugin, config, this::debug);
         this.itemFactory = new PortalItemFactory(plugin, config);
-        this.islandPlacer = new PortalIslandPlacer(blockBuilder, this::debug);
+        this.islandPlacer = new PortalIslandPlacer(plugin, blockBuilder, this::debug);
         this.accessController = new PortalAccessController(config);
         this.settingsMenu = new PortalSettingsMenu(plugin, config);
         long autosaveTicks = 20L * 60L * config.autosaveIntervalMinutes();
@@ -92,18 +95,33 @@ public final class PortalService implements Listener {
                 debug("Default " + type.id() + " portal already exists or is already queued for island " + islandId + ".");
                 continue;
             }
-            scheduler.runGlobalLater(() -> scheduler.runAt(islandLocation, () -> {
-                pendingCreations.remove(id);
-                DefaultPortalPlacement placement = islandPlacer.place(type, islandLocation);
-                if (placement == null) {
-                    debug("Could not find a clear portal-island location for " + type.id() + " on island " + islandId + ".");
-                    return;
-                }
-                createPortal(id, type, placement.portalBase(), placement.facing(), owner, islandId, true, islandMembers, placement.supportBlocks());
-                debug("Created default " + type.id() + " portal for island " + islandId + " at " + locationString(placement.portalBase()) + ".");
-            }), config.creationDelayTicks());
+            scheduler.runGlobalLater(() -> attemptDefaultPortal(id, type, islandId, islandLocation.clone(), owner, List.copyOf(islandMembers), 1), config.creationDelayTicks());
             debug("Queued default " + type.id() + " portal for island " + islandId + " from island location " + locationString(islandLocation) + ".");
         }
+    }
+
+    private void attemptDefaultPortal(String id, PortalType type, String islandId, Location islandLocation, String owner, List<String> islandMembers, int attempt) {
+        scheduler.runAtLoaded(islandLocation, () -> {
+            if (repository.contains(id)) {
+                pendingCreations.remove(id);
+                debug("Default " + type.id() + " portal already exists for island " + islandId + ".");
+                return;
+            }
+            DefaultPortalPlacement placement = islandPlacer.place(type, islandLocation);
+            if (placement == null) {
+                if (attempt < config.creationRetryAttempts()) {
+                    debug("Retrying default " + type.id() + " portal for island " + islandId + " after no clear placement was found on attempt " + attempt + ".");
+                    scheduler.runGlobalLater(() -> attemptDefaultPortal(id, type, islandId, islandLocation, owner, islandMembers, attempt + 1), config.creationRetryDelayTicks());
+                    return;
+                }
+                pendingCreations.remove(id);
+                debug("Could not find a clear portal-island location for " + type.id() + " on island " + islandId + " after " + attempt + " attempt(s).");
+                return;
+            }
+            pendingCreations.remove(id);
+            createPortal(id, type, placement.portalBase(), placement.facing(), owner, islandId, true, islandMembers, placement.supportBlocks());
+            debug("Created default " + type.id() + " portal for island " + islandId + " at " + locationString(placement.portalBase()) + ".");
+        });
     }
 
     public void handleIslandRemoved(String islandId, Location islandLocation, String actor, String owner, List<String> islandMembers) {
@@ -150,7 +168,7 @@ public final class PortalService implements Listener {
     }
 
     public void createPortal(String id, PortalType type, Location base, BlockFace facing, String owner, String islandId, boolean defaultPortal, List<String> islandMembers, List<String> supportBlocks) {
-        scheduler.runAt(base, () -> createPortalNow(id, type, base, facing, owner, islandId, defaultPortal, islandMembers, supportBlocks));
+        scheduler.runAtLoaded(base, () -> createPortalNow(id, type, base, facing, owner, islandId, defaultPortal, islandMembers, supportBlocks));
     }
 
     private void createPortalNow(String id, PortalType type, Location base, BlockFace facing, String owner, String islandId, boolean defaultPortal, List<String> islandMembers, List<String> supportBlocks) {
@@ -170,13 +188,29 @@ public final class PortalService implements Listener {
         requestSave();
     }
 
-    public boolean createDefaultPortal(String id, PortalType type, Location origin) {
-        DefaultPortalPlacement placement = islandPlacer.place(type, origin);
-        if (placement == null) {
-            return false;
+    public void createDefaultPortal(String id, PortalType type, Location origin, Consumer<Boolean> result) {
+        createDefaultPortal(id, type, origin, null, result);
+    }
+
+    public void createDefaultPortal(String id, PortalType type, Location origin, Player callbackPlayer, Consumer<Boolean> result) {
+        scheduler.runAtLoaded(origin, () -> {
+            // Manual test placement uses the same region-owned placement path as automatic island creation.
+            DefaultPortalPlacement placement = islandPlacer.place(type, origin);
+            if (placement == null) {
+                completePlacementResult(callbackPlayer, result, false);
+                return;
+            }
+            createPortal(id, type, placement.portalBase(), placement.facing(), null, null, false, List.of(), placement.supportBlocks());
+            completePlacementResult(callbackPlayer, result, true);
+        });
+    }
+
+    private void completePlacementResult(Player callbackPlayer, Consumer<Boolean> result, boolean created) {
+        if (callbackPlayer == null) {
+            scheduler.runGlobal(() -> result.accept(created));
+            return;
         }
-        createPortal(id, type, placement.portalBase(), placement.facing(), null, null, false, List.of(), placement.supportBlocks());
-        return true;
+        scheduler.runFor(callbackPlayer, () -> result.accept(created));
     }
 
     public boolean removeNearestPortal(Location location, int radius, boolean dropItem) {
@@ -200,21 +234,21 @@ public final class PortalService implements Listener {
         if (clickedPortal != null && event.getPlayer().isSneaking() && event.getAction() == Action.LEFT_CLICK_BLOCK) {
             event.setCancelled(true);
             if (!accessController.canPickup(event.getPlayer(), clickedPortal)) {
-                event.getPlayer().sendMessage(message("no-permission-pickup"));
+                send(event.getPlayer(), message("no-permission-pickup"));
                 return;
             }
             removeManagedPortal(clickedPortal, false);
             PortalType clickedType = config.type(clickedPortal.type());
             if (clickedType != null && clickedType.giveItemOnBreak()) {
                 giveOrDrop(event.getPlayer(), createPortalItem(clickedType, 1));
-                event.getPlayer().sendMessage(message("portal-picked-up"));
+                send(event.getPlayer(), message("portal-picked-up"));
             }
             return;
         }
         if (clickedPortal != null && event.getPlayer().isSneaking() && event.getAction() == Action.RIGHT_CLICK_BLOCK) {
             event.setCancelled(true);
             if (!accessController.canConfigure(event.getPlayer(), clickedPortal)) {
-                event.getPlayer().sendMessage(message("no-permission-configure"));
+                send(event.getPlayer(), message("no-permission-configure"));
                 return;
             }
             scheduler.runFor(event.getPlayer(), () -> settingsMenu.open(event.getPlayer(), clickedPortal));
@@ -232,7 +266,7 @@ public final class PortalService implements Listener {
         }
         if (type.permissions().hasPlace() && !event.getPlayer().hasPermission(type.permissions().place())) {
             event.setCancelled(true);
-            event.getPlayer().sendMessage(message("no-permission-place"));
+            send(event.getPlayer(), message("no-permission-place"));
             return;
         }
         event.setCancelled(true);
@@ -253,7 +287,7 @@ public final class PortalService implements Listener {
             return;
         }
         event.setCancelled(true);
-        event.getPlayer().sendMessage(message("break-use-sneak"));
+        send(event.getPlayer(), message("break-use-sneak"));
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
@@ -344,17 +378,16 @@ public final class PortalService implements Listener {
         }
         useCooldowns.put(player.getUniqueId(), now);
         if (!accessController.canUse(player, portal, type)) {
-            player.sendMessage(message("no-permission-use"));
+            send(player, message("no-permission-use"));
             return;
         }
         if (type.action() == PortalAction.COMMANDS) {
-            for (String command : type.commands()) {
-                plugin.getServer().dispatchCommand(plugin.getServer().getConsoleSender(), command.replace("%player%", player.getName()));
-            }
+            String playerName = player.getName();
+            scheduler.runGlobal(() -> type.commands().forEach(command -> plugin.getServer().dispatchCommand(plugin.getServer().getConsoleSender(), command.replace("%player%", playerName))));
             return;
         }
         if (type.target() == null) {
-            player.sendMessage(message("target-world-missing"));
+            send(player, message("target-world-missing"));
             return;
         }
         player.teleportAsync(type.target()).thenAccept(success -> {
@@ -367,7 +400,7 @@ public final class PortalService implements Listener {
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
         useCooldowns.remove(event.getPlayer().getUniqueId());
-        saveIfDirty();
+        scheduler.runAsync(this::saveIfDirty);
     }
 
     @EventHandler
@@ -392,16 +425,16 @@ public final class PortalService implements Listener {
         }
         ManagedPortal portal = repository.byId(holder.portalId());
         if (portal == null) {
-            player.closeInventory();
+            closeInventory(player);
             return;
         }
         if (!accessController.canConfigure(player, portal)) {
-            player.closeInventory();
-            player.sendMessage(message("no-permission-configure"));
+            closeInventory(player);
+            send(player, message("no-permission-configure"));
             return;
         }
         if (action.equals("close")) {
-            player.closeInventory();
+            closeInventory(player);
             return;
         }
         if (action.equals("pickup")) {
@@ -420,7 +453,7 @@ public final class PortalService implements Listener {
     }
 
     public void save() {
-        saveDirty = false;
+        saveDirty.set(false);
         repository.save();
     }
 
@@ -429,7 +462,7 @@ public final class PortalService implements Listener {
             autoSaveTask.cancel();
             autoSaveTask = null;
         }
-        save();
+        saveIfDirty();
         useCooldowns.clear();
         pendingCreations.clear();
         scheduler.cancelPluginTasks();
@@ -488,18 +521,18 @@ public final class PortalService implements Listener {
     }
 
     private void suppressVanillaPortal(Player player) {
-        player.setPortalCooldown(config.vanillaPortalCooldownTicks());
+        scheduler.runFor(player, () -> player.setPortalCooldown(config.vanillaPortalCooldownTicks()));
     }
 
     private void requestSave() {
-        saveDirty = true;
+        saveDirty.set(true);
     }
 
     private void saveIfDirty() {
-        if (!saveDirty) {
+        if (!saveDirty.compareAndSet(true, false)) {
             return;
         }
-        save();
+        repository.save();
     }
 
     private void cleanupCooldowns(long now) {
@@ -520,19 +553,19 @@ public final class PortalService implements Listener {
         for (String blockKey : portal.blocks()) {
             Location location = locationFromKey(blockKey);
             if (location != null) {
-                scheduler.runAt(location, () -> location.getBlock().setType(Material.AIR, false));
+                scheduler.runAtLoaded(location, () -> location.getBlock().setType(Material.AIR, false));
             }
         }
         for (String blockKey : portal.supportBlocks()) {
             Location location = locationFromKey(blockKey);
             if (location != null) {
-                scheduler.runAt(location, () -> location.getBlock().setType(Material.AIR, false));
+                scheduler.runAtLoaded(location, () -> location.getBlock().setType(Material.AIR, false));
             }
         }
         PortalType type = config.type(portal.type());
         Location base = portal.baseLocation();
         if (dropItem && type != null && type.giveItemOnBreak() && base != null) {
-            scheduler.runAt(base, () -> base.getWorld().dropItemNaturally(base, createPortalItem(type, 1)));
+            scheduler.runAtLoaded(base, () -> base.getWorld().dropItemNaturally(base, createPortalItem(type, 1)));
         }
     }
 
@@ -545,7 +578,7 @@ public final class PortalService implements Listener {
         if (parts.length != 4) {
             return null;
         }
-        var world = plugin.getServer().getWorld(parts[0]);
+        World world = plugin.getServer().getWorld(parts[0]);
         if (world == null) {
             return null;
         }
@@ -591,12 +624,14 @@ public final class PortalService implements Listener {
             if (player == null) {
                 continue;
             }
-            for (ItemStack item : player.getInventory().getContents()) {
-                PortalType type = typeFromItem(item);
-                if (type != null && type.defaultOnIsland()) {
-                    item.setAmount(0);
+            scheduler.runFor(player, () -> {
+                for (ItemStack item : player.getInventory().getContents()) {
+                    PortalType type = typeFromItem(item);
+                    if (type != null && type.defaultOnIsland()) {
+                        item.setAmount(0);
+                    }
                 }
-            }
+            });
         }
     }
 
@@ -614,8 +649,17 @@ public final class PortalService implements Listener {
     private void giveOrDrop(Player player, ItemStack item) {
         scheduler.runFor(player, () -> {
             Map<Integer, ItemStack> leftover = player.getInventory().addItem(item);
-            leftover.values().forEach(extra -> scheduler.runAt(player.getLocation(), () -> player.getWorld().dropItemNaturally(player.getLocation(), extra)));
+            Location dropLocation = player.getLocation();
+            leftover.values().forEach(extra -> scheduler.runAtLoaded(dropLocation, () -> dropLocation.getWorld().dropItemNaturally(dropLocation, extra)));
         });
+    }
+
+    private void send(Player player, Component component) {
+        scheduler.runFor(player, () -> player.sendMessage(component));
+    }
+
+    private void closeInventory(Player player) {
+        scheduler.runFor(player, player::closeInventory);
     }
 
     private Component message(String path) {

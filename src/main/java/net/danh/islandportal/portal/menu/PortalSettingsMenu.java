@@ -15,8 +15,8 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class PortalSettingsMenu {
 
@@ -76,7 +76,7 @@ public final class PortalSettingsMenu {
     }
 
     private String apply(String input, ManagedPortal portal) {
-        Map<String, String> placeholders = new HashMap<>();
+        Map<String, String> placeholders = new ConcurrentHashMap<>();
         placeholders.put("%portal_id%", portal.id());
         placeholders.put("%portal_type%", portal.type());
         placeholders.put("%pickup_policy%", portal.pickupPolicy().name());
