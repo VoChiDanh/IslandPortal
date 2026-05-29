@@ -1,0 +1,60 @@
+site_name: IslandPortal
+site_description: Documentation for IslandPortal - Modern Minecraft Portal Plugin
+site_author: Danh
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - toc.integrate
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: blue
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: blue
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+nav:
+  - Home: index.md
+  - Configuration: Configuration.md
+  - Commands & Permissions: Commands-and-Permissions.md
+  - Features:
+    - Schematic Portals: Schematic-Portal-Islands.md
+    - Storage & Cleanup: Storage-and-Cleanup.md
+  - Advanced:
+    - Folia Architecture: Folia-Architecture.md
+  - Troubleshooting: Troubleshooting.md
