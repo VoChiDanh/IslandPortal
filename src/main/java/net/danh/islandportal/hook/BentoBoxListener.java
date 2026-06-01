@@ -1,6 +1,7 @@
 package net.danh.islandportal.hook;
 
 import net.danh.islandportal.npc.service.IslandNpcService;
+import net.danh.islandportal.minion.service.MinionService;
 import net.danh.islandportal.portal.service.PortalService;
 import org.bukkit.Location;
 import org.bukkit.event.EventHandler;
@@ -19,10 +20,12 @@ public final class BentoBoxListener implements Listener {
 
     private final PortalService portalService;
     private final IslandNpcService npcService;
+    private final MinionService minionService;
 
-    public BentoBoxListener(PortalService portalService, IslandNpcService npcService) {
+    public BentoBoxListener(PortalService portalService, IslandNpcService npcService, MinionService minionService) {
         this.portalService = portalService;
         this.npcService = npcService;
+        this.minionService = minionService;
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -59,6 +62,7 @@ public final class BentoBoxListener implements Listener {
             String islandId = "bentobox:" + island.getUniqueId();
             portalService.handleIslandRemoved(islandId, location, uuid(event.getPlayerUUID()), uuid(island.getOwner()), members(island));
             npcService.handleIslandRemoved(islandId, location);
+            minionService.handleIslandRemoved(islandId, location);
         }
     }
 
@@ -69,6 +73,7 @@ public final class BentoBoxListener implements Listener {
         String islandId = "bentobox:" + island.getUniqueId();
         portalService.handleIslandRemoved(islandId, location, uuid(event.getPlayerUUID()), uuid(island.getOwner()), members(island));
         npcService.handleIslandRemoved(islandId, location);
+        minionService.handleIslandRemoved(islandId, location);
     }
 
     private Location islandLocation(Island island, Location eventLocation) {

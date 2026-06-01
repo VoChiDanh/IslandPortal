@@ -5,6 +5,7 @@ import com.bgsoftware.superiorskyblock.api.events.IslandWorldResetEvent;
 import com.bgsoftware.superiorskyblock.api.events.PostIslandCreateEvent;
 import com.bgsoftware.superiorskyblock.api.island.Island;
 import com.bgsoftware.superiorskyblock.api.world.Dimension;
+import net.danh.islandportal.minion.service.MinionService;
 import net.danh.islandportal.npc.service.IslandNpcService;
 import net.danh.islandportal.portal.service.PortalService;
 import org.bukkit.Location;
@@ -19,10 +20,12 @@ public final class SuperiorSkyblockListener implements Listener {
 
     private final PortalService portalService;
     private final IslandNpcService npcService;
+    private final MinionService minionService;
 
-    public SuperiorSkyblockListener(PortalService portalService, IslandNpcService npcService) {
+    public SuperiorSkyblockListener(PortalService portalService, IslandNpcService npcService, MinionService minionService) {
         this.portalService = portalService;
         this.npcService = npcService;
+        this.minionService = minionService;
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -45,6 +48,7 @@ public final class SuperiorSkyblockListener implements Listener {
         String islandId = "superior:" + island.getUniqueId();
         portalService.handleIslandRemoved(islandId, location, event.getPlayer().getUniqueId().toString(), owner(island), members(island));
         npcService.handleIslandRemoved(islandId, location);
+        minionService.handleIslandRemoved(islandId, location);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -55,6 +59,7 @@ public final class SuperiorSkyblockListener implements Listener {
         String islandId = "superior:" + island.getUniqueId();
         portalService.handleIslandRemoved(islandId, location, actor, owner(island), members(island));
         npcService.handleIslandRemoved(islandId, location);
+        minionService.handleIslandRemoved(islandId, location);
     }
 
     private Location location(Island island) {

@@ -16,6 +16,39 @@ dependencies:
     Skyllia:
       load: AFTER
       required: false
+    Vault:
+      load: AFTER
+      required: false
+    ShopGUIPlus:
+      load: AFTER
+      required: false
+    Essentials:
+      load: AFTER
+      required: false
+    CMI:
+      load: AFTER
+      required: false
+    HeadDatabase:
+      load: AFTER
+      required: false
+    ItemsAdder:
+      load: AFTER
+      required: false
+    Oraxen:
+      load: AFTER
+      required: false
+    Nexo:
+      load: AFTER
+      required: false
+    MMOItems:
+      load: AFTER
+      required: false
+    MythicMobs:
+      load: AFTER
+      required: false
+    packetevents:
+      load: AFTER
+      required: false
     WorldEdit:
       load: AFTER
       required: false

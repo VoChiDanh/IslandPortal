@@ -1,5 +1,12 @@
 package net.danh.islandportal.npc.service;
 
+import com.github.retrooper.packetevents.PacketEvents;
+import com.github.retrooper.packetevents.event.PacketListenerCommon;
+import com.github.retrooper.packetevents.event.PacketListenerPriority;
+import com.github.retrooper.packetevents.event.simple.PacketPlayReceiveEvent;
+import com.github.retrooper.packetevents.event.SimplePacketListenerAbstract;
+import com.github.retrooper.packetevents.protocol.packettype.PacketType;
+import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity;
 import net.danh.islandportal.npc.config.IslandNpcConfig;
 import net.danh.islandportal.npc.model.ManagedNpc;
 import net.danh.islandportal.npc.model.NpcClickAction;
@@ -47,10 +54,11 @@ public final class IslandNpcService implements Listener {
     private final PlatformScheduler scheduler;
     private final NpcRepository repository;
     private final NamespacedKey npcIdKey;
-    private final Map<UUID, Long> interactionCooldowns = new ConcurrentHashMap<>();
+    private final Map<String, Long> interactionCooldowns = new ConcurrentHashMap<>();
     private final Map<String, Location> movementTargets = new ConcurrentHashMap<>();
     private final Map<String, Long> nextMovementMillis = new ConcurrentHashMap<>();
     private final AtomicBoolean saveDirty = new AtomicBoolean(false);
+    private PacketListenerCommon packetEventsListener;
     private PlatformTask lookTask;
     private PlatformTask movementTask;
     private PlatformTask respawnTask;
@@ -61,6 +69,7 @@ public final class IslandNpcService implements Listener {
         this.scheduler = scheduler;
         this.repository = new NpcRepository(plugin, this::debug);
         this.npcIdKey = new NamespacedKey(plugin, "island_npc_id");
+        registerPacketEventsListener();
     }
 
     public void load() {
@@ -156,6 +165,27 @@ public final class IslandNpcService implements Listener {
         interact(player, npc, NpcClickAction.LEFT);
     }
 
+    private void handleAttackPacket(Player player, int entityId) {
+        Entity entity = entityByRuntimeId(player.getWorld(), entityId);
+        if (entity == null) {
+            return;
+        }
+        ManagedNpc npc = npc(entity);
+        if (npc == null) {
+            return;
+        }
+        scheduler.runFor(player, () -> interact(player, npc, NpcClickAction.LEFT));
+    }
+
+    private Entity entityByRuntimeId(World world, int entityId) {
+        for (Entity entity : world.getEntities()) {
+            if (entity.getEntityId() == entityId) {
+                return entity;
+            }
+        }
+        return null;
+    }
+
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
     public void onNpcDeath(EntityDeathEvent event) {
         ManagedNpc npc = npc(event.getEntity());
@@ -188,11 +218,45 @@ public final class IslandNpcService implements Listener {
             respawnTask.cancel();
             respawnTask = null;
         }
+        unregisterPacketEventsListener();
         saveIfDirty();
         interactionCooldowns.clear();
         movementTargets.clear();
         nextMovementMillis.clear();
-        scheduler.runGlobal(this::removeLoadedPluginNpcs);
+        removeLoadedPluginNpcs();
+    }
+
+    private void registerPacketEventsListener() {
+        if (packetEventsListener != null || !packetEventsEnabled()) {
+            return;
+        }
+        packetEventsListener = PacketEvents.getAPI().getEventManager().registerListener(new SimplePacketListenerAbstract(PacketListenerPriority.NORMAL) {
+            @Override
+            public void onPacketPlayReceive(PacketPlayReceiveEvent event) {
+                if (event.getPacketType() != PacketType.Play.Client.INTERACT_ENTITY || !(event.getPlayer() instanceof Player player)) {
+                    return;
+                }
+                WrapperPlayClientInteractEntity packet = new WrapperPlayClientInteractEntity(event);
+                if (packet.getAction() != WrapperPlayClientInteractEntity.InteractAction.ATTACK) {
+                    return;
+                }
+                handleAttackPacket(player, packet.getEntityId());
+            }
+        });
+    }
+
+    private void unregisterPacketEventsListener() {
+        if (packetEventsListener == null || !packetEventsEnabled()) {
+            packetEventsListener = null;
+            return;
+        }
+        PacketEvents.getAPI().getEventManager().unregisterListener(packetEventsListener);
+        packetEventsListener = null;
+    }
+
+    private boolean packetEventsEnabled() {
+        return plugin.getServer().getPluginManager().isPluginEnabled("packetevents")
+                || plugin.getServer().getPluginManager().isPluginEnabled("PacketEvents");
     }
 
     private void createNpc(String id, NpcType type, Location location, String owner, String islandId, List<String> islandMembers) {
@@ -400,11 +464,12 @@ public final class IslandNpcService implements Listener {
 
     private void interact(Player player, ManagedNpc npc, NpcClickAction clickAction) {
         long now = System.currentTimeMillis();
-        Long lastUse = interactionCooldowns.get(player.getUniqueId());
+        String cooldownKey = player.getUniqueId() + ":" + npc.id() + ":" + clickAction.name();
+        Long lastUse = interactionCooldowns.get(cooldownKey);
         if (lastUse != null && now - lastUse < config.interactionCooldownMillis()) {
             return;
         }
-        interactionCooldowns.put(player.getUniqueId(), now);
+        interactionCooldowns.put(cooldownKey, now);
 
         NpcType type = config.type(npc.type());
         if (type == null) {

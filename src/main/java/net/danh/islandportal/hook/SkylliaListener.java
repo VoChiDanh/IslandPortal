@@ -6,6 +6,7 @@ import fr.euphyllia.skyllia.api.event.SkyblockDeleteEvent;
 import fr.euphyllia.skyllia.api.skyblock.Island;
 import fr.euphyllia.skyllia.api.skyblock.Players;
 import fr.euphyllia.skyllia.api.skyblock.model.Position;
+import net.danh.islandportal.minion.service.MinionService;
 import net.danh.islandportal.npc.service.IslandNpcService;
 import net.danh.islandportal.platform.PlatformScheduler;
 import net.danh.islandportal.portal.service.PortalService;
@@ -25,11 +26,13 @@ public final class SkylliaListener implements Listener {
 
     private final PortalService portalService;
     private final IslandNpcService npcService;
+    private final MinionService minionService;
     private final PlatformScheduler scheduler;
 
-    public SkylliaListener(PortalService portalService, IslandNpcService npcService, PlatformScheduler scheduler) {
+    public SkylliaListener(PortalService portalService, IslandNpcService npcService, MinionService minionService, PlatformScheduler scheduler) {
         this.portalService = portalService;
         this.npcService = npcService;
+        this.minionService = minionService;
         this.scheduler = scheduler;
     }
 
@@ -65,6 +68,7 @@ public final class SkylliaListener implements Listener {
         String islandId = "skyllia:" + island.getId();
         portalService.handleIslandRemoved(islandId, location, ownerId == null ? null : ownerId.toString(), ownerId == null ? null : ownerId.toString(), members(island));
         npcService.handleIslandRemoved(islandId, location);
+        minionService.handleIslandRemoved(islandId, location);
     }
 
     private void handleIslandCreated(Island island, Location location, UUID ownerId) {
