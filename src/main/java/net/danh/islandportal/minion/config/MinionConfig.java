@@ -124,6 +124,14 @@ public final class MinionConfig {
         return messages.getOrDefault(key, key);
     }
 
+    public String message(String key, String... replacements) {
+        String value = message(key);
+        for (int i = 0; i + 1 < replacements.length; i += 2) {
+            value = value.replace(replacements[i], replacements[i + 1]);
+        }
+        return value;
+    }
+
     public Collection<MinionMenuItem> menuItems() {
         return menuItems.values();
     }
