@@ -405,6 +405,18 @@ public final class MinionConfig {
         messages.put("inspect-actions", "<gray>Actions: <white>%actions%");
         messages.put("inspect-fuel", "<gray>Fuel: <white>%fuel%");
         messages.put("inspect-chest", "<gray>Chest: <white>%chest%");
+        messages.put("upgrade-max-tier-lore", "<gray>Already max tier.");
+        messages.put("upgrade-tier-lore", "<gray>Upgrade to tier <white>%tier%");
+        messages.put("upgrade-cost-lore", "<gray>Cost:");
+        messages.put("upgrade-cost-free-lore", "<green>Free");
+        messages.put("upgrade-cost-money-lore", "<dark_gray>- <green>$%amount%");
+        messages.put("upgrade-cost-item-lore", "<dark_gray>- <white>%amount%x %item%");
+        messages.put("fuel-none", "none");
+        messages.put("fuel-active", "%time%s x%multiplier%");
+        messages.put("placement-overlap", "<red>You cannot place minions too close to each other. Work areas cannot overlap.");
+        messages.put("item-stat-tier", "<gray>Tier: <white>%tier%");
+        messages.put("item-stat-actions", "<gray>Actions: <white>%actions%");
+        messages.put("item-stat-storage", "<gray>Storage: <white>%stored%/%storage_limit%");
     }
 
     private void loadMenu() {

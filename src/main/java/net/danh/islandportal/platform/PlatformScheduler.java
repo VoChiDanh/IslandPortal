@@ -75,8 +75,9 @@ public final class PlatformScheduler {
         }
         int chunkX = location.getBlockX() >> 4;
         int chunkZ = location.getBlockZ() >> 4;
-        // Async chunk loading avoids blocking the main thread on Paper and avoids illegal synchronous chunk loads on Folia.
-        world.getChunkAtAsync(chunkX, chunkZ).thenAccept(ignored -> runAt(location, runnable));
+        if (world.isChunkLoaded(chunkX, chunkZ)) {
+            runAt(location, runnable);
+        }
     }
 
     public void runFor(Entity entity, Runnable runnable) {

@@ -88,6 +88,7 @@ public final class MinionService implements Listener {
     private PlatformTask productionTask;
     private PlatformTask autosaveTask;
     private PlatformTask respawnTask;
+    private java.util.Iterator<ManagedMinion> tickIterator;
 
     public MinionService(JavaPlugin plugin, MinionConfig config, PlatformScheduler scheduler) {
         this.plugin = plugin;
@@ -193,6 +194,16 @@ public final class MinionService implements Listener {
             meta.getPersistentDataContainer().set(minionBoosterIdKey, PersistentDataType.STRING, minion.boosterId() == null ? "" : minion.boosterId());
             meta.getPersistentDataContainer().set(minionBoosterRemainingKey, PersistentDataType.LONG, Math.max(0L, minion.boosterUntilMillis() - now));
             meta.getPersistentDataContainer().set(minionStorageKey, PersistentDataType.STRING, serializeStorage(minion.storage()));
+
+            // Add stats to lore
+            List<net.kyori.adventure.text.Component> lore = meta.hasLore() ? new java.util.ArrayList<>(meta.lore()) : new java.util.ArrayList<>();
+            lore.add(net.kyori.adventure.text.Component.empty());
+            lore.add(net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().deserialize(config.message("item-stat-tier", "%tier%", String.valueOf(minion.tier()))));
+            lore.add(net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().deserialize(config.message("item-stat-actions", "%actions%", String.valueOf(minion.actionCount()))));
+            String storageLimit = String.valueOf(type.tier(minion.tier()).storageLimit());
+            lore.add(net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().deserialize(config.message("item-stat-storage", "%stored%", String.valueOf(storageAmount(minion.storage())), "%storage_limit%", storageLimit)));
+            meta.lore(lore);
+
             item.setItemMeta(meta);
         }
         return item;
@@ -425,6 +436,31 @@ public final class MinionService implements Listener {
                 return;
             }
             ManagedMinion minion = restoreFromItem(ManagedMinion.of(id, type, location, owner, islandId, List.of(owner)), sourceItem);
+            
+            // Check for overlap
+            int size = type.tier(minion.tier()).actionSize();
+            double radius = size / 2.0;
+            boolean overlaps = false;
+            for (ManagedMinion existing : repository.all()) {
+                if (existing.location() != null && existing.location().getWorld().equals(location.getWorld())) {
+                    MinionType existingType = config.type(existing.type());
+                    if (existingType != null) {
+                        int existingSize = existingType.tier(existing.tier()).actionSize();
+                        double existingRadius = existingSize / 2.0;
+                        double distanceX = Math.abs(existing.location().getX() - location.getX());
+                        double distanceZ = Math.abs(existing.location().getZ() - location.getZ());
+                        if (distanceX < radius + existingRadius && distanceZ < radius + existingRadius) {
+                            overlaps = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (overlaps) {
+                scheduler.runFor(player, () -> player.sendMessage(config.message("placement-overlap", "<red>You cannot place minions too close to each other. Work areas cannot overlap.")));
+                return;
+            }
+
             repository.add(minion);
             spawn(minion);
             requestSave();
@@ -460,10 +496,14 @@ public final class MinionService implements Listener {
         }
         int scheduled = 0;
         long now = System.currentTimeMillis();
-        for (ManagedMinion minion : repository.all()) {
+        if (tickIterator == null || !tickIterator.hasNext()) {
+            tickIterator = repository.all().iterator();
+        }
+        while (tickIterator.hasNext()) {
             if (scheduled >= config.maxActionsPerTick()) {
                 return;
             }
+            ManagedMinion minion = tickIterator.next();
             MinionType type = config.type(minion.type());
             Location location = minion.location();
             if (type == null || location == null) {
@@ -668,21 +708,25 @@ public final class MinionService implements Listener {
     private List<String> upgradeLore(MinionType type, ManagedMinion minion) {
         MinionTier next = type.nextTier(minion.tier());
         if (next == null) {
-            return List.of("<gray>Already max tier.");
+            return List.of(config.message("upgrade-max-tier-lore"));
         }
         if (next.upgradeCost().isEmpty()) {
             if (next.upgradeMoney() <= 0.0) {
-                return List.of("<gray>Upgrade to tier <white>" + next.level(), "<gray>Cost: <green>Free");
+                return List.of(
+                        config.message("upgrade-tier-lore", "%tier%", String.valueOf(next.level())),
+                        config.message("upgrade-cost-lore"),
+                        config.message("upgrade-cost-free-lore")
+                );
             }
         }
         List<String> lore = new java.util.ArrayList<>();
-        lore.add("<gray>Upgrade to tier <white>" + next.level());
-        lore.add("<gray>Cost:");
+        lore.add(config.message("upgrade-tier-lore", "%tier%", String.valueOf(next.level())));
+        lore.add(config.message("upgrade-cost-lore"));
         if (next.upgradeMoney() > 0.0) {
-            lore.add("<dark_gray>- <green>$" + next.upgradeMoney());
+            lore.add(config.message("upgrade-cost-money-lore", "%amount%", String.valueOf(next.upgradeMoney())));
         }
         for (MinionRequirement requirement : next.upgradeCost()) {
-            lore.add("<dark_gray>- <white>" + requirement.amount() + "x " + nativeItemBridge.storageKey(requirement.itemKey(), requirement.material()));
+            lore.add(config.message("upgrade-cost-item-lore", "%amount%", String.valueOf(requirement.amount()), "%item%", nativeItemBridge.storageKey(requirement.itemKey(), requirement.material())));
         }
         return lore;
     }
@@ -690,17 +734,17 @@ public final class MinionService implements Listener {
     private String fuelText(ManagedMinion minion) {
         long remaining = minion.fuelUntilMillis() - System.currentTimeMillis();
         if (remaining <= 0) {
-            return "none";
+            return config.message("fuel-none");
         }
-        return Math.max(1, remaining / 1000L) + "s x" + minion.fuelMultiplier();
+        return config.message("fuel-active", "%time%", String.valueOf(Math.max(1, remaining / 1000L)), "%multiplier%", String.valueOf(minion.fuelMultiplier()));
     }
 
     private String boosterText(ManagedMinion minion) {
         long remaining = minion.boosterUntilMillis() - System.currentTimeMillis();
         if (remaining <= 0) {
-            return "none";
+            return config.message("fuel-none");
         }
-        return Math.max(1, remaining / 1000L) + "s x" + minion.boosterMultiplier();
+        return config.message("fuel-active", "%time%", String.valueOf(Math.max(1, remaining / 1000L)), "%multiplier%", String.valueOf(minion.boosterMultiplier()));
     }
 
     private String displayName(MinionType type, ManagedMinion minion) {
